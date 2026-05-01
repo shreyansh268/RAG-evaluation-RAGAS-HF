@@ -2,6 +2,15 @@
 
 Evaluate a RAG (Retrieval-Augmented Generation) system using [Ragas 0.3](https://docs.ragas.io) and Hugging Face Inference API as the LLM backend.
 
+Results File with DicreteMetric Scores (Correctness & Tone)
+
+<img width="327" height="83" alt="image" src="https://github.com/user-attachments/assets/9245459b-bcb2-48f4-af21-111648d19ac8" />
+
+Sample RAG_run_log_file
+
+<img width="397" height="416" alt="image" src="https://github.com/user-attachments/assets/974a3888-60f8-4171-945d-224e79eba5cc" />
+
+
 ## How it works
 
 ```
