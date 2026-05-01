@@ -1,0 +1,46 @@
+# Credentials & secrets
+.env
+.env.*
+*.env
+secrets.json
+credentials.json
+*_token*
+*_key*
+token.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+pip-wheel-metadata/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# uv
+.uv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Eval runtime outputs — logs and experiment CSVs are generated on each run
+rag_eval/evals/logs/*.json
+rag_eval/evals/experiments/*.csv
