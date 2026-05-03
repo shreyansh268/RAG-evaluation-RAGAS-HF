@@ -1,0 +1,126 @@
+name: RAG Eval Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PASS_RATE_MIN: "0.50"   # per-judge gate: fail if any judge gives < 50% pass rate
+  CV_WARN_THRESHOLD: "0.70" # cross-judge gate: warn if judge disagreement is high
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        working-directory: rag_eval
+        run: uv sync
+
+      - name: Run evaluations
+        working-directory: rag_eval
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: uv run python evals.py
+
+      - name: Gate on metrics
+        working-directory: rag_eval
+        env:
+          PASS_RATE_MIN: ${{ env.PASS_RATE_MIN }}
+          CV_WARN_THRESHOLD: ${{ env.CV_WARN_THRESHOLD }}
+        run: |
+          uv run python - << 'PYEOF'
+          import csv, os, sys
+          from pathlib import Path
+
+          PASS_RATE_MIN = float(os.environ.get("PASS_RATE_MIN", "0.50"))
+          CV_WARN_THRESHOLD = float(os.environ.get("CV_WARN_THRESHOLD", "0.70"))
+
+          report_files = sorted(Path("evals/reports").glob("score_report_*.csv"))
+          if not report_files:
+              print("::error::No report file found in evals/reports/")
+              sys.exit(1)
+
+          report = report_files[-1]
+          print(f"Reading report: {report.name}")
+          rows = list(csv.DictReader(open(report)))
+
+          judge_rows = [r for r in rows if r["judge_model"] != "SUMMARY"]
+          summary = next((r for r in rows if r["judge_model"] == "SUMMARY"), None)
+
+          failed = False
+          for row in judge_rows:
+              pr = float(row["pass_rate"])
+              status = "OK" if pr >= PASS_RATE_MIN else "FAIL"
+              print(f"  [{status}] {row['judge_model']}: pass_rate={pr:.0%}")
+              if pr < PASS_RATE_MIN:
+                  print(f"::error::Gate failed — {row['judge_model']} pass rate {pr:.0%} < {PASS_RATE_MIN:.0%}")
+                  failed = True
+
+          if summary:
+              parts = dict(p.split("=") for p in summary["pass_rate"].split())
+              cv = float(parts.get("CV", "0"))
+              mean_pr = float(parts.get("mean", "0"))
+              print(f"\n  Cross-judge mean={mean_pr:.0%}  CV={cv:.4f}")
+              if cv > CV_WARN_THRESHOLD:
+                  print(f"::warning::High judge disagreement — CV={cv:.4f} exceeds threshold {CV_WARN_THRESHOLD}. Scores are judge-sensitive.")
+
+          if failed:
+              sys.exit(1)
+          print("\nAll metric gates passed.")
+          PYEOF
+
+      - name: Publish job summary
+        if: always()
+        working-directory: rag_eval
+        run: |
+          uv run python - << 'PYEOF'
+          import csv, os
+          from pathlib import Path
+
+          report_files = sorted(Path("evals/reports").glob("score_report_*.csv"))
+          if not report_files:
+              print("No report found — skipping summary")
+              exit()
+
+          report = report_files[-1]
+          rows = list(csv.DictReader(open(report)))
+          judge_rows = [r for r in rows if r["judge_model"] != "SUMMARY"]
+          summary = next((r for r in rows if r["judge_model"] == "SUMMARY"), None)
+
+          summary_file = os.environ.get("GITHUB_STEP_SUMMARY", "")
+          if not summary_file:
+              exit()
+
+          with open(summary_file, "a") as f:
+              f.write("## RAG Eval Results\n\n")
+              f.write("| Judge | Samples | Pass Rate | Formal | Informal | Neutral |\n")
+              f.write("|---|---|---|---|---|---|\n")
+              for row in judge_rows:
+                  pr = float(row["pass_rate"])
+                  f.write(
+                      f"| `{row['judge_model']}` | {row['n_samples']} | {pr:.0%} "
+                      f"| {row['tone_formal']} | {row['tone_informal']} | {row['tone_neutral']} |\n"
+                  )
+              if summary:
+                  parts = dict(p.split("=") for p in summary["pass_rate"].split())
+                  mean_pr = float(parts.get("mean", "0"))
+                  cv = float(parts.get("CV", "0"))
+                  f.write(f"\n**Cross-judge mean pass rate:** {mean_pr:.0%} &nbsp;|&nbsp; **CV (σ/μ):** {cv:.4f}\n")
+          PYEOF
+
+      - name: Upload eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ github.run_id }}
+          path: |
+            rag_eval/evals/experiments/
+            rag_eval/evals/reports/
+          retention-days: 30
