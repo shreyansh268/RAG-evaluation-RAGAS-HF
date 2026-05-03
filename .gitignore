@@ -41,6 +41,7 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Eval runtime outputs — logs and experiment CSVs are generated on each run
+# Eval runtime outputs — logs, experiment CSVs, and reports are generated on each run
 rag_eval/evals/logs/*.json
 rag_eval/evals/experiments/*.csv
+rag_eval/evals/reports/*.csv

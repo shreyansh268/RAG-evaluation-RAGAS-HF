@@ -1,0 +1,6 @@
+{
+  "judge_models": [
+    "HuggingFaceH4/zephyr-7b-alpha:featherless-ai",
+    "Qwen/Qwen3-0.6B:featherless-ai"
+  ]
+}

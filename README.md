@@ -96,6 +96,48 @@ Both use `DiscreteMetric` from Ragas: the judge LLM is given a prompt and constr
 
 The `scores` array in each `retrieve_complete` trace event (e.g. `[3, 3, 1]`) is a **keyword match count** — how many query words appear in a document. Documents scoring `0` are excluded from the context. These are diagnostic only, not evaluation quality metrics.
 
+## Run with multiple Judge-LLMs
+
+Configure judge models in `rag_eval/models_config.json` — the RAG model stays fixed while each judge is swapped in turn:
+
+```json
+{
+  "judge_models": [
+    "HuggingFaceH4/zephyr-7b-alpha:featherless-ai",
+    "Qwen/Qwen3-0.6B:featherless-ai"
+  ]
+}
+```
+
+For each judge model the pipeline:
+1. Runs all dataset questions through the **fixed** RAG model (`hf_client_rag`)
+2. Scores every answer with that judge (`hf_client_judge`) using `correctness` and `tone` metrics
+3. Saves per-judge experiment results to `evals/experiments/`
+
+After all judges finish, a cross-judge report is written to `evals/reports/score_report_<timestamp>.csv`:
+
+| Column | What it measures |
+|---|---|
+| `pass_rate` | Fraction of questions judged as `pass` by this model |
+| `tone_*` | Count of `formal` / `informal` / `neutral` tone labels |
+| `CV (σ/μ)` | Coefficient of variation across judges' pass rates — low CV means judges agree, high CV means disagreement |
+
+### What CV tells you
+
+CV = `std(pass_rates) / mean(pass_rates)` across all judge models.
+
+Example: zephyr scores 75%, Qwen scores 25% → `CV = 0.354 / 0.50 = 0.71`
+
+| CV | Meaning |
+|---|---|
+| ~0 | Judges score almost identically — high agreement |
+| 0.2–0.5 | Moderate disagreement — judges have different strictness thresholds |
+| >0.5 | High disagreement — eval results are judge-sensitive, not just RAG-quality-sensitive |
+
+A high CV is a signal that your scores depend heavily on *which* model you pick as the judge, not just the quality of your RAG answers.
+
+Any model available on the [HF Inference Router](https://huggingface.co/docs/inference-providers) works. Use `model_id:provider` (e.g. `Qwen/Qwen3-0.6B:groq`) or a routing policy suffix (`:fastest`, `:cheapest`).
+
 ## Customization
 
 ### Change the model
