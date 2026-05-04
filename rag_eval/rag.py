@@ -389,6 +389,7 @@ class ExampleRAG:
         try:
             retrieved_docs = self.retrieve_documents(question, top_k)
             response = self.generate_response(question, top_k)
+            context = "\n\n".join(doc["content"] for doc in retrieved_docs)
 
             result = {"answer": response, "run_id": run_id}
 
@@ -406,7 +407,7 @@ class ExampleRAG:
             )
 
             logs_path = self.export_traces_to_log(run_id, question, result)
-            return {"answer": response, "run_id": run_id, "logs": logs_path}
+            return {"answer": response, "run_id": run_id, "logs": logs_path, "context": context}
 
         except Exception as e:
             self.traces.append(

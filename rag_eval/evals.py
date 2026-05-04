@@ -38,6 +38,12 @@ my_tone_metric = DiscreteMetric(
     allowed_values=["formal", "informal", "neutral"],
 )
 
+context_recall_metric = DiscreteMetric(
+    name="context_recall",
+    prompt="Check if the retrieved context contains enough information to cover the key points in the grading notes. Return 'pass' if the context covers the key points, 'fail' if it is missing important information.\nContext: {context}\nGrading Notes: {grading_notes}",
+    allowed_values=["pass", "fail"],
+)
+
 
 def load_judge_models() -> list[str]:
     with open(MODELS_CONFIG_PATH) as f:
@@ -83,15 +89,18 @@ def make_experiment(llm, row_results: list):
     async def run_experiment(row):
         response = rag_client.query(row["question"])
         answer = response.get("answer", "")
+        context = response.get("context", "")
 
         score = my_metric.score(llm=llm, response=answer, grading_notes=row["grading_notes"])
         tone_score = my_tone_metric.score(llm=llm, response=answer)
+        ctx_recall_score = context_recall_metric.score(llm=llm, context=context, grading_notes=row["grading_notes"])
 
         result = {
             **row,
             "response": answer,
             "score": score.value,
             "tone_score": tone_score.value,
+            "context_recall_score": ctx_recall_score.value,
             "log_file": response.get("logs", " "),
         }
         row_results.append(result)
@@ -120,7 +129,9 @@ def generate_score_report(model_results: dict, report_dir: str = "evals/reports"
     for judge_model, results in model_results.items():
         correctness_nums = [CORRECTNESS_NUMERIC.get(r["score"], 0) for r in results]
         tone_counts = Counter(r["tone_score"] for r in results)
+        ctx_recall_nums = [CORRECTNESS_NUMERIC.get(r.get("context_recall_score", "fail"), 0) for r in results]
         pass_rate = statistics.mean(correctness_nums) if correctness_nums else 0.0
+        ctx_recall_rate = statistics.mean(ctx_recall_nums) if ctx_recall_nums else 0.0
         model_pass_rates[judge_model] = pass_rate
 
         per_model_rows.append({
@@ -132,6 +143,9 @@ def generate_score_report(model_results: dict, report_dir: str = "evals/reports"
             "tone_formal": tone_counts.get("formal", 0),
             "tone_informal": tone_counts.get("informal", 0),
             "tone_neutral": tone_counts.get("neutral", 0),
+            "context_recall_pass": sum(ctx_recall_nums),
+            "context_recall_fail": len(ctx_recall_nums) - sum(ctx_recall_nums),
+            "context_recall_rate": round(ctx_recall_rate, 4),
         })
 
     pass_rates = list(model_pass_rates.values())
@@ -153,6 +167,9 @@ def generate_score_report(model_results: dict, report_dir: str = "evals/reports"
             "tone_formal": "",
             "tone_informal": "",
             "tone_neutral": "",
+            "context_recall_pass": "",
+            "context_recall_fail": "",
+            "context_recall_rate": "",
         })
 
     print("\n" + "=" * 60)
@@ -160,8 +177,9 @@ def generate_score_report(model_results: dict, report_dir: str = "evals/reports"
     print("=" * 60)
     for row in per_model_rows:
         print(f"\nJudge : {row['judge_model']}")
-        print(f"  Correctness : {row['pass_count']}/{row['n_samples']} pass  ({row['pass_rate'] * 100:.1f}%)")
-        print(f"  Tone        : formal={row['tone_formal']}  informal={row['tone_informal']}  neutral={row['tone_neutral']}")
+        print(f"  Correctness     : {row['pass_count']}/{row['n_samples']} pass  ({row['pass_rate'] * 100:.1f}%)")
+        print(f"  Context Recall  : {row['context_recall_pass']}/{row['n_samples']} pass  ({row['context_recall_rate'] * 100:.1f}%)")
+        print(f"  Tone            : formal={row['tone_formal']}  informal={row['tone_informal']}  neutral={row['tone_neutral']}")
 
     print(f"\n--- Cross-Judge Correctness Statistics ---")
     print(f"  Mean pass rate : {mean_pr:.4f}")
