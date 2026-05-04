@@ -10,6 +10,8 @@ requires-python = ">=3.9"
 dependencies = [
     "ragas>=0.3.0",
     "openai>=1.0.0",
+    "langchain-huggingface>=0.1.0",
+    "numpy>=1.24.0",
 ]
 
 [project.optional-dependencies]
