@@ -36,8 +36,11 @@ Dataset (questions + grading notes)
 ```
 rag_eval/
 ├── rag.py              # RAG system: SimpleKeywordRetriever + ExampleRAG + tracing
-├── evals.py            # Evaluation workflow: dataset, metrics, experiment runner
-├── pyproject.toml      # Dependencies (ragas>=0.3, openai SDK for HF routing)
+├── evals.py            # Custom eval workflow: DiscreteMetric, multi-judge, CV report
+├── eval_metrics.py     # Ragas built-in metrics: Faithfulness + AnswerRelevancy via evaluate()
+├── rag_eval.py         # Self-contained RAG + eval using LangChain HF endpoints
+├── models_config.json  # Judge model list for multi-judge runs
+├── pyproject.toml      # Dependencies
 ├── evals/
 │   ├── datasets/       # test_dataset.csv — questions & grading notes
 │   ├── experiments/    # Output CSVs, one per experiment run (git-ignored)
@@ -137,6 +140,33 @@ Example: zephyr scores 75%, Qwen scores 25% → `CV = 0.354 / 0.50 = 0.71`
 A high CV is a signal that your scores depend heavily on *which* model you pick as the judge, not just the quality of your RAG answers.
 
 Any model available on the [HF Inference Router](https://huggingface.co/docs/inference-providers) works. Use `model_id:provider` (e.g. `Qwen/Qwen3-0.6B:groq`) or a routing policy suffix (`:fastest`, `:cheapest`).
+
+## RAG improvements
+
+`rag_eval.py` uses Ragas built-in metrics (`LLMContextRecall`, `Faithfulness`, `FactualCorrectness`) to measure end-to-end RAG quality.
+
+### System prompt tightening
+
+**Change made** — updated generator system prompt from:
+```
+"Answer based on given documents only."
+```
+to:
+```
+"Answer ONLY using facts explicitly stated in the documents. Do not add any information not present in the documents."
+```
+
+### Before / After
+
+| Metric | Before | After | Change |
+|---|---|---|---|
+| `context_recall` | 1.0000 | 1.0000 | — |
+| `faithfulness` | 0.6667 | 0.6250 | -0.04 (minor regression, within noise) |
+| `factual_correctness (F1)` | 0.4500 | 0.8020 | **+0.35** |
+
+Tightening the prompt had a large positive effect on factual correctness — the model stopped adding hedging phrases and paraphrasing away from the ground truth. The small faithfulness dip is within expected variance for small LLMs.
+
+> See [NOTES.md](NOTES.md) for additional improvement ideas not yet applied.
 
 ## Customization
 

@@ -49,7 +49,7 @@ class RAG:
 
     def generate_answer(self, query: str, relevant_docs: list[str]) -> str:
         messages = [
-            SystemMessage(content="Answer based on given documents only."),
+            SystemMessage(content="Answer in one concise sentence using only facts from the documents. Be precise."),
             HumanMessage(
                 content=f"Question: {query}\n\nDocuments:\n" + "\n".join(relevant_docs)
             ),
